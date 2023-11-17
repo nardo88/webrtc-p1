@@ -15,8 +15,6 @@ const servers = {
   ],
 };
 
-console.log(window.location.search.split("=")[1]);
-
 const init = async () => {
   client = await AgoraRTM.createInstance(APP_ID);
   await client.login({ uid, token });
@@ -25,6 +23,9 @@ const init = async () => {
   await channel.join();
 
   channel.on("MemberJoined", handleUserJoined);
+  channel.on("MemberLeft", handleUserLeft);
+
+  client.on("MessageFromPeer", handleMessageFromPeer);
 
   localStream = await navigator.mediaDevices.getUserMedia({
     audio: false,
@@ -35,14 +36,28 @@ const init = async () => {
 };
 
 const handleUserJoined = async (MemberId) => {
-  console.log("new user", MemberId);
+  createOffer(MemberId);
 };
 
-const createOffer = async () => {
+const handleUserLeft = async (MemberId) => {
+  document.getElementById("user-2").style.display = "none";
+};
+
+const createPeerConnection = async (MemberId) => {
   peerConnection = new RTCPeerConnection(servers);
 
   remoteStream = new MediaStream();
   document.getElementById("user-2").srcObject = remoteStream;
+  document.getElementById("user-2").style.display = "block";
+
+  if (!localStream) {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: true,
+    });
+
+    document.getElementById("user-1").srcObject = localStream;
+  }
 
   localStream.getTracks().forEach((track) => {
     peerConnection.addTrack(track, localStream);
@@ -56,14 +71,70 @@ const createOffer = async () => {
 
   peerConnection.onicecandidate = async (event) => {
     if (event.candidate) {
-      console.log("new candidate:", event.candidate);
+      client.sendMessageToPeer(
+        {
+          text: JSON.stringify({
+            type: "candidate",
+            candidate: event.candidate,
+          }),
+        },
+        MemberId
+      );
     }
   };
-
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
 };
 
-// 41:43
+// тот кто заходит в комнату, ему тот кто уже в комнате штел сообщение
+const handleMessageFromPeer = async (message, MemberId) => {
+  message = JSON.parse(message.text);
+  if (message.type === "offer") {
+    createAnswer(MemberId, message.offer);
+  }
+  if (message.type === "answer") {
+    addAnswer(message.answer);
+  }
+
+  if (message.type === "candidate") {
+    if (peerConnection) {
+      peerConnection.addIceCandidate(message.candidate);
+    }
+  }
+};
+
+const createOffer = async (MemberId) => {
+  await createPeerConnection(MemberId);
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+
+  client.sendMessageToPeer(
+    { text: JSON.stringify({ type: "offer", offer }) },
+    MemberId
+  );
+};
+
+const createAnswer = async (MemberId, offer) => {
+  await createPeerConnection(MemberId);
+  await peerConnection.setRemoteDescription(offer);
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+
+  client.sendMessageToPeer(
+    { text: JSON.stringify({ type: "answer", answer }) },
+    MemberId
+  );
+};
+
+const addAnswer = async (answer) => {
+  if (!peerConnection.currentRemoteDescription) {
+    peerConnection.setRemoteDescription(answer);
+  }
+};
+
+const leaveChannel = async () => {
+  await channel.leave();
+  await client.logout();
+};
+
+window.addEventListener("beforeunload", leaveChannel);
 
 init();
