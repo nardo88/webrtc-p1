@@ -4,6 +4,14 @@ let peerConnection;
 const APP_ID = "b9b3451abaa84f78b4eb6dfedffc45f4";
 let token = null;
 let uid = String(Math.floor(Math.random() * 10000));
+const queryString = window.location.search;
+const urlParams = new URLSearchParams(queryString);
+const roomId = urlParams.get("room");
+
+if (!roomId) {
+  window.location = "lobby.html";
+}
+
 let client;
 let channel;
 // создание stun server
@@ -19,7 +27,7 @@ const init = async () => {
   client = await AgoraRTM.createInstance(APP_ID);
   await client.login({ uid, token });
 
-  channel = client.createChannel("main");
+  channel = client.createChannel(roomId);
   await channel.join();
 
   channel.on("MemberJoined", handleUserJoined);
@@ -136,5 +144,24 @@ const leaveChannel = async () => {
 };
 
 window.addEventListener("beforeunload", leaveChannel);
+
+const toggleCamera = () => {
+  const videoTrack = localStream
+    .getTracks()
+    .find((track) => track.kind === "video");
+  if (videoTrack.enabled) {
+    videoTrack.enabled = false;
+    document.getElementById("camera-btn").style.backgroundColor =
+      "rgb(255,80,80)";
+  } else {
+    videoTrack.enabled = true;
+    document.getElementById("camera-btn").style.backgroundColor =
+      "rgb(179, 102, 249, 0.9)";
+  }
+};
+
+// 1:19:23
+
+document.getElementById("camera-btn").addEventListener("click", toggleCamera);
 
 init();

@@ -14,7 +14,11 @@
 
     <script>
       const form = document.getElementById("join-form");
-      //1:05:30
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const inviteLink = event.target.invite_link.value;
+        window.location = `index.html?room=${inviteLink}`;
+      });
     </script>
   </body>
 </html>
